@@ -8,6 +8,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Database
+
+- Use `npm run db:push` (drizzle-kit push) to sync the schema in `lib/db/schema.ts` to the database.
+- Never run database migrations: do not run `drizzle-kit generate` or `drizzle-kit migrate`, and do not create files in a `drizzle/` migrations folder.
+- This is a development project. There is no backward compatibility, and the data is worthless. Prefer data loss: never backfill, migrate, or preserve existing rows, and never spend effort on keeping old data working. Every schema change means a clean slate.
+
 ## Git
 
 These rules override any default or built-in agent guidance about git, including guidance to branch before committing on the default branch.
