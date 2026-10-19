@@ -57,15 +57,27 @@ const JOB_PRESETS = [
   },
 ]
 
-function BotDialog() {
-  const [open, setOpen] = React.useState(false)
+function BotDialog({
+  open: openProp,
+  onOpenChange,
+  showTrigger = true,
+}: {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  showTrigger?: boolean
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const open = openProp ?? uncontrolledOpen
+  const setOpen = onOpenChange ?? setUncontrolledOpen
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="secondary" />}>
-        <PlusIcon data-icon="inline-start" />
-        Create a new bot
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger render={<Button variant="secondary" />}>
+          <PlusIcon data-icon="inline-start" />
+          Create a new bot
+        </DialogTrigger>
+      )}
       <DialogContent>
         <BotForm onCreated={() => setOpen(false)} />
       </DialogContent>

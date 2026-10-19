@@ -1,11 +1,32 @@
-import { UserButton } from "@clerk/nextjs"
+"use client"
 
+import * as React from "react"
+import { UserButton } from "@clerk/nextjs"
+import { formatDistanceToNowStrict } from "date-fns"
+import { PlusIcon, UsersIcon } from "lucide-react"
+
+import { BotDialog } from "@/components/bot-dialog"
+import { ChatAvatar } from "@/components/chat-avatar"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Sidebar,
+  SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import type { UserChat } from "@/queries/bots"
 
 const userButtonAppearance = {
   elements: {
@@ -20,16 +41,82 @@ const userButtonAppearance = {
   },
 }
 
-export function AppSidebar() {
+export function AppSidebar({ chats }: { chats: UserChat[] }) {
+  const [botDialogOpen, setBotDialogOpen] = React.useState(false)
+
   return (
-    <Sidebar className="shadow-lg">
-      <SidebarFooter className="mt-auto">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <UserButton showName appearance={userButtonAppearance} />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+    <>
+      <Sidebar className="shadow-lg">
+        <SidebarHeader>
+          <div className="flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="secondary" size="icon-sm" />}
+              >
+                <PlusIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="bottom"
+                align="end"
+                className="w-max"
+              >
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => setBotDialogOpen(true)}>
+                    <PlusIcon />
+                    Create new bot
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <UsersIcon />
+                    Create group chat
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {chats.map((chat) => (
+                  <SidebarMenuItem key={chat.id}>
+                    <SidebarMenuButton size="lg" className="h-auto">
+                      {chat.avatar && (
+                        <ChatAvatar seed={chat.avatar} className="shrink-0" />
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-medium">
+                            {chat.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatDistanceToNowStrict(chat.lastMessageAt)}
+                          </span>
+                        </div>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {chat.lastMessagePreview}
+                        </span>
+                      </div>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="mt-auto">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <UserButton showName appearance={userButtonAppearance} />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+      <BotDialog
+        open={botDialogOpen}
+        onOpenChange={setBotDialogOpen}
+        showTrigger={false}
+      />
+    </>
   )
 }
