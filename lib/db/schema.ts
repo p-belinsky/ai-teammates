@@ -1,4 +1,12 @@
-import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import {
+  index,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core"
+import { relations } from "drizzle-orm"
 import { createInsertSchema } from "drizzle-zod"
 import { nanoid } from "nanoid"
 
@@ -36,3 +44,59 @@ export const insertBotSchema = createInsertSchema(bots, {
 export const botFormSchema = insertBotSchema
   .pick({ avatar: true, name: true, job: true, instructions: true })
   .required({ avatar: true })
+
+export const chatKindEnum = pgEnum("chat_kind", ["direct", "group"])
+
+export const chats = pgTable(
+  "chats",
+  {
+    id: text()
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    // Third-party user id (Clerk)
+    userId: text().notNull(),
+    kind: chatKindEnum().notNull().default("direct"),
+    // Null for direct chats, which show the bot's name instead
+    name: text(),
+    lastMessagePreview: text(),
+    lastMessageAt: timestamp().notNull().defaultNow(),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [index("chats_user_id_idx").on(table.userId)]
+)
+
+export const chatMembers = pgTable(
+  "chat_members",
+  {
+    chatId: text()
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    botId: text()
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    joinedAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.chatId, table.botId] }),
+    index("chat_members_bot_id_idx").on(table.botId),
+  ]
+)
+
+export const botsRelations = relations(bots, ({ many }) => ({
+  memberships: many(chatMembers),
+}))
+
+export const chatsRelations = relations(chats, ({ many }) => ({
+  members: many(chatMembers),
+}))
+
+export const chatMembersRelations = relations(chatMembers, ({ one }) => ({
+  chat: one(chats, {
+    fields: [chatMembers.chatId],
+    references: [chats.id],
+  }),
+  bot: one(bots, {
+    fields: [chatMembers.botId],
+    references: [bots.id],
+  }),
+}))
