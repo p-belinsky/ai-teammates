@@ -5,7 +5,7 @@ import { UserButton } from "@clerk/nextjs"
 import { formatDistanceToNowStrict } from "date-fns"
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 
 import { BotDialog } from "@/components/bot-dialog"
 import { ChatAvatar } from "@/components/chat-avatar"
@@ -60,6 +60,7 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
   const [botDialogOpen, setBotDialogOpen] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const router = useRouter()
+  const { chatId } = useParams<{ chatId?: string }>()
   const { state } = useSidebar()
   const collapsed = state === "collapsed"
 
@@ -133,6 +134,7 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
                     <SidebarMenuButton
                       size="lg"
                       className="h-auto"
+                      isActive={chat.id === chatId}
                       render={<Link href={`/chats/${chat.id}`} />}
                     >
                       {chat.avatar && (
