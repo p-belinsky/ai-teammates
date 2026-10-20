@@ -1,5 +1,6 @@
 "use client";
 
+import type { BaseUIEvent } from "@base-ui/react/types"
 import type {
   ChangeEvent,
   ComponentProps,
@@ -237,7 +238,7 @@ export const QuestionOption = ({
   const isSelected = question.selectedValues.includes(value);
   const role = question.selectionMode === "single" ? "radio" : "checkbox";
   const handleClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
+    (event: BaseUIEvent<MouseEvent<HTMLButtonElement>>) => {
       question.toggleValue(value);
       onClick?.(event);
     },
