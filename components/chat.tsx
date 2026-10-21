@@ -1,8 +1,19 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import type { TriggerChatTransport } from "@trigger.dev/sdk/chat"
+import {
+  useLoadTranscript,
+  useTriggerChatTransport,
+} from "@trigger.dev/sdk/chat/react"
+import type { UIMessage } from "ai"
 import { useState } from "react"
 
+import {
+  loadChatTranscript,
+  mintChatAccessToken,
+  startChatSession,
+} from "@/actions/chat"
 import {
   Conversation,
   ConversationContent,
@@ -22,10 +33,49 @@ import {
   PromptInputTextarea,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
+import type { chatAgent } from "@/trigger/chat"
 
-export function Chat() {
+export function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport<typeof chatAgent>({
+    task: "chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
+  })
+
+  const { messages, isLoading } = useLoadTranscript(
+    chatId,
+    loadChatTranscript,
+    { transport }
+  )
+
+  if (isLoading) return null
+
+  return (
+    <ChatThread
+      chatId={chatId}
+      initialMessages={messages}
+      transport={transport}
+    />
+  )
+}
+
+function ChatThread({
+  chatId,
+  initialMessages,
+  transport,
+}: {
+  chatId: string
+  initialMessages: UIMessage[]
+  transport: TriggerChatTransport
+}) {
   const [input, setInput] = useState("")
-  const { messages, sendMessage, status, stop } = useChat()
+  const { messages, sendMessage, status, stop } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: initialMessages.length > 0,
+  })
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (!message.text.trim()) return

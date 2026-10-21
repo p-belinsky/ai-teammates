@@ -20,7 +20,7 @@ export default async function Page({
   return (
     <div className="flex h-svh flex-col">
       <ChatHeader chat={chat} />
-      <Chat />
+      <Chat chatId={chat.id} />
     </div>
   )
 }
