@@ -44,7 +44,26 @@ function shellQuote(value: string) {
   return `'${value.replaceAll("'", `'\\''`)}'`
 }
 
-async function readySandbox(sandboxId: string) {
+// Writes through the shell instead of fs.uploadFile, which needs form-data and fails in the Trigger.dev bundle.
+// Each chunk is decoded on its own, so the chunk size must stay a multiple of 4 characters.
+const WRITE_CHUNK_CHARS = 64 * 1024
+
+async function writeBase64(sandbox: Sandbox, path: string, encoded: string) {
+  const target = shellQuote(path)
+  await sandbox.process.executeCommand(`: > ${target}`)
+
+  for (let start = 0; start < encoded.length; start += WRITE_CHUNK_CHARS) {
+    const chunk = encoded.slice(start, start + WRITE_CHUNK_CHARS)
+    const response = await sandbox.process.executeCommand(
+      `printf '%s' '${chunk}' | base64 -d >> ${target}`
+    )
+    if (response.exitCode !== 0) {
+      throw new Error(`Writing ${path} failed: ${response.result}`)
+    }
+  }
+}
+
+export async function readySandbox(sandboxId: string) {
   const sandbox = await daytona.get(sandboxId)
   if (sandbox.state !== "started") await sandbox.start()
 
@@ -70,10 +89,7 @@ async function captureScreen(sandbox: Sandbox): Promise<ScreenshotResult> {
 
   const path = `${SCREENSHOT_DIR}/${crypto.randomUUID()}.jpg`
   await sandbox.process.executeCommand(`mkdir -p ${SCREENSHOT_DIR}`)
-  await sandbox.fs.uploadFile(
-    Buffer.from(shot.screenshot ?? "", "base64"),
-    path
-  )
+  await writeBase64(sandbox, path, shot.screenshot ?? "")
 
   return {
     path,
@@ -188,7 +204,11 @@ export function computerTools(sandboxId: string) {
           await sandbox.process.executeCommand(
             `mkdir -p ${shellQuote(posix.dirname(path))}`
           )
-          await sandbox.fs.uploadFile(Buffer.from(content, "utf8"), path)
+          await writeBase64(
+            sandbox,
+            path,
+            Buffer.from(content, "utf8").toString("base64")
+          )
 
           return { path, bytes: Buffer.byteLength(content, "utf8") }
         }),

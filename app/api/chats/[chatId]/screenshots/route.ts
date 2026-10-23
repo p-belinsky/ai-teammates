@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server"
 
-import { daytona } from "@/lib/daytona"
-import { SCREENSHOT_PATTERN } from "@/lib/computer-use"
+import { readySandbox, SCREENSHOT_PATTERN } from "@/lib/computer-use"
 import { getUserChat } from "@/queries/chats"
 
 // Serves one screenshot from the chat's bot sandbox, for the chat to show inline
@@ -22,7 +21,8 @@ export async function GET(
   }
 
   try {
-    const sandbox = await daytona.get(userChat.bot.sandboxId)
+    // The sandbox auto-stops when idle, and a stopped one can't serve files, so start it as the tools do
+    const sandbox = await readySandbox(userChat.bot.sandboxId)
     const bytes = await sandbox.fs.downloadFile(path)
 
     return new Response(new Uint8Array(bytes), {
