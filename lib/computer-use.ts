@@ -63,6 +63,18 @@ async function writeBase64(sandbox: Sandbox, path: string, encoded: string) {
   }
 }
 
+// Reads through the shell for the same reason: fs.downloadFile loads busboy, which the bundle can't resolve
+export async function readBytes(sandbox: Sandbox, path: string) {
+  const response = await sandbox.process.executeCommand(
+    `base64 -w0 ${shellQuote(path)}`
+  )
+  if (response.exitCode !== 0) {
+    throw new Error(`Reading ${path} failed: ${response.result}`)
+  }
+
+  return Buffer.from(response.result.trim(), "base64")
+}
+
 export async function readySandbox(sandboxId: string) {
   const sandbox = await daytona.get(sandboxId)
   if (sandbox.state !== "started") await sandbox.start()
@@ -127,7 +139,7 @@ async function screenshotForModel(
     return { type: "error-text" as const, value: output.error }
 
   const sandbox = await readySandbox(sandboxId)
-  const bytes = await sandbox.fs.downloadFile(output.path)
+  const bytes = await readBytes(sandbox, output.path)
 
   return {
     type: "content" as const,
@@ -178,7 +190,7 @@ export function computerTools(sandboxId: string) {
       execute: ({ path }) =>
         attempt(async () => {
           const sandbox = await readySandbox(sandboxId)
-          const bytes = await sandbox.fs.downloadFile(path)
+          const bytes = await readBytes(sandbox, path)
 
           if (bytes.length > MAX_READ_BYTES) {
             throw new Error(
