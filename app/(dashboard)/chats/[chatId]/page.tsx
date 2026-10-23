@@ -2,7 +2,10 @@ import { auth } from "@clerk/nextjs/server"
 import { notFound } from "next/navigation"
 
 import { Chat } from "@/components/chat"
+import { ChatDesktop } from "@/components/chat-desktop"
 import { ChatHeader } from "@/components/chat-header"
+import { ChatLayout } from "@/components/chat-layout"
+import { ChatVncProvider } from "@/components/chat-vnc"
 import { getUserChat } from "@/queries/chats"
 
 export default async function Page({
@@ -18,9 +21,15 @@ export default async function Page({
   if (!chat) notFound()
 
   return (
-    <div className="flex h-svh flex-col">
-      <ChatHeader chat={chat} />
-      <Chat chatId={chat.id} />
-    </div>
+    <ChatVncProvider key={chat.id} chatId={chat.id}>
+      <ChatLayout
+        panel={
+          chat.bot && <ChatDesktop botName={chat.bot.name} />
+        }
+      >
+        <ChatHeader chat={chat} />
+        <Chat chatId={chat.id} />
+      </ChatLayout>
+    </ChatVncProvider>
   )
 }

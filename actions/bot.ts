@@ -1,9 +1,11 @@
 "use server"
 
 import { auth } from "@clerk/nextjs/server"
+import { DaytonaNotFoundError } from "@daytona/sdk"
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { daytona } from "@/lib/daytona"
 import { db } from "@/lib/db"
 import { bots, botFormSchema, chatMembers, chats } from "@/lib/db/schema"
 
@@ -15,31 +17,44 @@ export async function createBot(input: unknown) {
     return { error: parsed.error.issues[0].message }
   }
 
-  // One transaction so the bot never exists without its direct chat
-  const { bot, chat } = await db.transaction(async (tx) => {
-    const [bot] = await tx
-      .insert(bots)
-      .values({
-        ...parsed.data,
-        userId,
-        instructions: parsed.data.instructions || null,
-      })
-      .returning({ id: bots.id })
+  // The sandbox comes first so the bot row can store its id
+  const sandbox = await daytona.create().catch(() => null)
+  if (!sandbox) {
+    return { error: "Couldn't create the bot's sandbox. Try again." }
+  }
 
-    // Direct chats show the bot's name, so name stays null
-    const [chat] = await tx
-      .insert(chats)
-      .values({ userId, kind: "direct" })
-      .returning({ id: chats.id })
+  try {
+    // One transaction so the bot never exists without its direct chat
+    const { bot, chat } = await db.transaction(async (tx) => {
+      const [bot] = await tx
+        .insert(bots)
+        .values({
+          ...parsed.data,
+          userId,
+          sandboxId: sandbox.id,
+          instructions: parsed.data.instructions || null,
+        })
+        .returning({ id: bots.id })
 
-    await tx.insert(chatMembers).values({ chatId: chat.id, botId: bot.id })
+      // Direct chats show the bot's name, so name stays null
+      const [chat] = await tx
+        .insert(chats)
+        .values({ userId, kind: "direct" })
+        .returning({ id: chats.id })
 
-    return { bot, chat }
-  })
+      await tx.insert(chatMembers).values({ chatId: chat.id, botId: bot.id })
 
-  revalidatePath("/")
+      return { bot, chat }
+    })
 
-  return { id: bot.id, chatId: chat.id }
+    revalidatePath("/")
+
+    return { id: bot.id, chatId: chat.id }
+  } catch (error) {
+    // No bot row points at this sandbox, so don't leave it behind
+    await sandbox.delete().catch(() => {})
+    throw error
+  }
 }
 
 export async function updateBot(botId: string, input: unknown) {
@@ -70,8 +85,36 @@ export async function updateBot(botId: string, input: unknown) {
   return { id: bot.id }
 }
 
+async function deleteSandbox(sandboxId: string) {
+  try {
+    const sandbox = await daytona.get(sandboxId)
+    await sandbox.delete()
+  } catch (error) {
+    // Already gone, so there's nothing left to delete
+    if (error instanceof DaytonaNotFoundError) return
+    throw error
+  }
+}
+
 export async function deleteBot(botId: string) {
   const { userId } = await auth.protect()
+
+  // Read the sandbox id before the bot row is gone
+  const [target] = await db
+    .select({ sandboxId: bots.sandboxId })
+    .from(bots)
+    .where(and(eq(bots.id, botId), eq(bots.userId, userId)))
+
+  if (!target) {
+    return { error: "Bot not found" }
+  }
+
+  // Delete the sandbox first: if that fails, the bot stays so the user can retry
+  try {
+    await deleteSandbox(target.sandboxId)
+  } catch {
+    return { error: "Couldn't delete the bot's sandbox. Try again." }
+  }
 
   // One transaction so no direct chat is left behind without its bot
   const deleted = await db.transaction(async (tx) => {

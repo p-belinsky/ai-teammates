@@ -14,6 +14,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Never run database migrations: do not run `drizzle-kit generate` or `drizzle-kit migrate`, and do not create files in a `drizzle/` migrations folder.
 - This is a development project. There is no backward compatibility, and the data is worthless. Prefer data loss: never backfill, migrate, or preserve existing rows, and never spend effort on keeping old data working. Every schema change means a clean slate.
 
+## Deployment (Railway)
+
+- Env variables on the Railway deployment are copied from `.env.local`, with one exception: `TRIGGER_SECRET_KEY` on Railway is a different key from the one in `.env.local`. Do not copy the local value to Railway. Use the deployment secret key from the Trigger.dev dashboard for the target environment.
+
 ## Forms
 
 Forms are built with react-hook-form, zod, and shadcn `Field` components. `components/bot-dialog.tsx` is the reference implementation.

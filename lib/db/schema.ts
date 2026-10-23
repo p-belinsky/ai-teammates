@@ -27,8 +27,8 @@ export const bots = pgTable(
     job: text().notNull(),
     // How the bot should go about the job
     instructions: text(),
-    // Third-party sandbox id, created lazily
-    sandboxId: text(),
+    // Third-party sandbox id, created with the bot and deleted with it
+    sandboxId: text().notNull(),
     createdAt: timestamp().notNull().defaultNow(),
   },
   (table) => [index("bots_user_id_idx").on(table.userId)]

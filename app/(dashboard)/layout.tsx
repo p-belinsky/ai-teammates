@@ -21,7 +21,7 @@ export default async function DashboardLayout({
   return (
     <SidebarProvider defaultOpen={sidebarOpen}>
       <AppSidebar chats={chats} />
-      <SidebarInset>{children}</SidebarInset>
+      <SidebarInset className="min-w-0">{children}</SidebarInset>
     </SidebarProvider>
   )
 }
