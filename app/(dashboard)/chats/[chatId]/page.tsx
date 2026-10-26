@@ -28,7 +28,7 @@ export default async function Page({
         }
       >
         <ChatHeader chat={chat} />
-        <Chat chatId={chat.id} />
+        <Chat chatId={chat.id} bots={chat.bots} />
       </ChatLayout>
     </ChatVncProvider>
   )

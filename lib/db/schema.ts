@@ -82,6 +82,36 @@ export const chatMembers = pgTable(
   ]
 )
 
+export const insertChatSchema = createInsertSchema(chats, {
+  name: (schema) => schema.trim().min(1, "Name your group chat").max(40),
+}).omit({
+  id: true,
+  userId: true,
+  kind: true,
+  lastMessagePreview: true,
+  lastMessageAt: true,
+  createdAt: true,
+})
+
+export const insertChatMemberSchema = createInsertSchema(chatMembers).omit({
+  chatId: true,
+  joinedAt: true,
+})
+
+// Name is nullable for direct chats, but a group chat always has one. Its bots must be at least two.
+export const groupChatFormSchema = insertChatSchema
+  .pick({ name: true })
+  .required({ name: true })
+  .extend({
+    botIds: insertChatMemberSchema.shape.botId
+      .array()
+      .min(2, "Pick at least two bots"),
+  })
+  .refine((values) => values.name !== null, {
+    path: ["name"],
+    message: "Name your group chat",
+  })
+
 export const botsRelations = relations(bots, ({ many }) => ({
   memberships: many(chatMembers),
 }))

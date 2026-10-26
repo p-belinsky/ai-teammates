@@ -1,6 +1,7 @@
 import { neon } from "@neon/ai-sdk-provider"
 import { chat, type InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai"
 import { stepCountIs } from "ai"
+import { z } from "zod"
 
 import { getChatBot } from "../lib/chat-bot"
 import { computerTools } from "../lib/computer-use"
@@ -9,11 +10,13 @@ import { computerTools } from "../lib/computer-use"
 export type ComputerTools = ReturnType<typeof computerTools>
 export type ChatUIMessage = InferChatUIMessageFromTools<ComputerTools>
 
-// Looked up by chat id on every worker and every turn. clientData is not used: the browser
-// sends none per message, so reading it here fails on the continuation turns.
-async function loadBot(chatId: string) {
-  const bot = await getChatBot(chatId)
-  if (!bot) throw new Error(`No bot for chat ${chatId}`)
+// Sent with every turn: the bot the person picked to answer it
+const clientDataSchema = z.object({ botId: z.string().min(1) })
+
+// Looked up on every turn, so each turn runs as the bot that was picked for it
+async function loadBot(chatId: string, botId: string | undefined) {
+  const bot = botId ? await getChatBot(chatId, botId) : null
+  if (!bot) throw new Error(`Bot ${botId} isn't in chat ${chatId}`)
 
   return bot
 }
@@ -35,21 +38,27 @@ function buildSystemPrompt(bot: {
     .join("\n\n")
 }
 
-export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
-  id: "chat",
-  // Resolved every turn, so each chat drives its own bot's sandbox
-  tools: async ({ chatId }) => computerTools((await loadBot(chatId)).sandboxId),
-  // Runs on every fresh worker, so the prompt survives restarts and continuations
-  onBoot: async ({ chatId }) => {
-    chat.prompt.set(buildSystemPrompt(await loadBot(chatId)))
-  },
-  run: async ({ messages, tools, signal, streamText }) =>
-    streamText({
-      model: neon("claude-sonnet-5"),
-      messages,
-      tools,
-      abortSignal: signal,
-      // Each tool call is a step, so the model needs room to act and then answer
-      stopWhen: stepCountIs(25),
-    }),
-})
+export const chatAgent = chat
+  .withUIMessage<ChatUIMessage>()
+  .withClientData({ schema: clientDataSchema })
+  .agent({
+    id: "chat",
+    // Resolved every turn, so each turn drives the sandbox of the bot that answers it
+    tools: async ({ chatId, clientData }) =>
+      computerTools((await loadBot(chatId, clientData?.botId)).sandboxId),
+    // Every turn can be a different bot, so the prompt is set per turn rather than once per worker
+    onTurnStart: async ({ chatId, clientData }) => {
+      chat.prompt.set(
+        buildSystemPrompt(await loadBot(chatId, clientData?.botId))
+      )
+    },
+    run: async ({ messages, tools, signal, streamText }) =>
+      streamText({
+        model: neon("claude-sonnet-5"),
+        messages,
+        tools,
+        abortSignal: signal,
+        // Each tool call is a step, so the model needs room to act and then answer
+        stopWhen: stepCountIs(25),
+      }),
+  })

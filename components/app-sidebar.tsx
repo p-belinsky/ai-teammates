@@ -9,6 +9,8 @@ import { useParams, useRouter } from "next/navigation"
 
 import { BotDialog } from "@/components/bot-dialog"
 import { ChatAvatar } from "@/components/chat-avatar"
+import { GroupChatAvatar } from "@/components/group-chat-avatar"
+import { GroupChatDialog } from "@/components/group-chat-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -41,7 +43,16 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import type { UserChat } from "@/queries/bots"
+import type { UserBot, UserChat } from "@/queries/bots"
+
+// Direct chats show their bot's face; group chats show the stack of every member
+function ChatFace({ chat }: { chat: UserChat }) {
+  if (chat.kind === "group") {
+    return <GroupChatAvatar seeds={chat.avatars} className="shrink-0" />
+  }
+
+  return <ChatAvatar seed={chat.avatars[0]} className="shrink-0" />
+}
 
 const userButtonAppearance = {
   elements: {
@@ -56,8 +67,15 @@ const userButtonAppearance = {
   },
 }
 
-export function AppSidebar({ chats }: { chats: UserChat[] }) {
+export function AppSidebar({
+  chats,
+  bots,
+}: {
+  chats: UserChat[]
+  bots: UserBot[]
+}) {
   const [botDialogOpen, setBotDialogOpen] = React.useState(false)
+  const [groupChatOpen, setGroupChatOpen] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const router = useRouter()
   const { chatId } = useParams<{ chatId?: string }>()
@@ -97,7 +115,7 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
                     <PlusIcon />
                     Create new bot
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setGroupChatOpen(true)}>
                     <UsersIcon />
                     Create group chat
                   </DropdownMenuItem>
@@ -137,9 +155,7 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
                       isActive={chat.id === chatId}
                       render={<Link href={`/chats/${chat.id}`} />}
                     >
-                      {chat.avatar && (
-                        <ChatAvatar seed={chat.avatar} className="shrink-0" />
-                      )}
+                      <ChatFace chat={chat} />
                       <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate font-medium">
@@ -190,9 +206,7 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
                     router.push(`/chats/${chat.id}`)
                   }}
                 >
-                  {chat.avatar && (
-                    <ChatAvatar seed={chat.avatar} className="shrink-0" />
-                  )}
+                  <ChatFace chat={chat} />
                   <span className="truncate">{chat.name}</span>
                 </CommandItem>
               ))}
@@ -204,6 +218,11 @@ export function AppSidebar({ chats }: { chats: UserChat[] }) {
         open={botDialogOpen}
         onOpenChange={setBotDialogOpen}
         showTrigger={false}
+      />
+      <GroupChatDialog
+        open={groupChatOpen}
+        onOpenChange={setGroupChatOpen}
+        bots={bots}
       />
     </>
   )

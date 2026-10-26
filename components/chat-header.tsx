@@ -6,13 +6,16 @@ import { MonitorIcon } from "lucide-react"
 import { BotDialog } from "@/components/bot-dialog"
 import { ChatAvatar } from "@/components/chat-avatar"
 import { useChatLayout } from "@/components/chat-layout"
+import { GroupChatAvatar } from "@/components/group-chat-avatar"
 import { Button } from "@/components/ui/button"
 import type { bots } from "@/lib/db/schema"
 
 type ChatHeaderProps = {
   chat: {
+    kind: "direct" | "group"
     name: string
     bot: typeof bots.$inferSelect | null
+    bots: (typeof bots.$inferSelect)[]
   }
 }
 
@@ -40,17 +43,26 @@ function ChatHeader({ chat }: ChatHeaderProps) {
           />
         </>
       ) : (
-        <span className="truncate text-sm font-medium">{chat.name}</span>
+        <div className="flex min-w-0 items-center gap-2 px-2">
+          <GroupChatAvatar
+            seeds={chat.bots.map((bot) => bot.avatar)}
+            className="shrink-0"
+          />
+          <span className="truncate text-sm font-medium">{chat.name}</span>
+        </div>
       )}
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Desktop"
-        aria-pressed={desktopOpen}
-        onClick={toggleDesktop}
-      >
-        <MonitorIcon />
-      </Button>
+      {/* Group chats have no desktop: each message is answered by a different bot */}
+      {chat.kind === "direct" && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Desktop"
+          aria-pressed={desktopOpen}
+          onClick={toggleDesktop}
+        >
+          <MonitorIcon />
+        </Button>
+      )}
     </header>
   )
 }

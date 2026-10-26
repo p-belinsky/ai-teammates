@@ -43,8 +43,14 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
@@ -95,12 +101,19 @@ function groupParts(parts: ChatPart[]): PartBlock[] {
   return blocks
 }
 
-export function Chat({ chatId }: { chatId: string }) {
+type ChatBot = { id: string; name: string; avatar: string }
+
+export function Chat({ chatId, bots }: { chatId: string; bots: ChatBot[] }) {
+  // The bot that answers the next message. A direct chat has one; a group chat lets the person pick
+  const [botId, setBotId] = useState(bots[0]?.id ?? "")
+
   const transport = useTriggerChatTransport<typeof chatAgent>({
     task: "chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
+    // Sent with every message, so the picked bot answers that turn
+    clientData: { botId },
   })
 
   const { messages, isLoading } = useLoadTranscript(
@@ -114,6 +127,9 @@ export function Chat({ chatId }: { chatId: string }) {
   return (
     <ChatThread
       chatId={chatId}
+      bots={bots}
+      botId={botId}
+      onBotChange={setBotId}
       initialMessages={messages as ChatMessage[]}
       transport={transport}
     />
@@ -122,10 +138,16 @@ export function Chat({ chatId }: { chatId: string }) {
 
 function ChatThread({
   chatId,
+  bots,
+  botId,
+  onBotChange,
   initialMessages,
   transport,
 }: {
   chatId: string
+  bots: ChatBot[]
+  botId: string
+  onBotChange: (botId: string) => void
   initialMessages: ChatMessage[]
   transport: TriggerChatTransport
 }) {
@@ -199,6 +221,29 @@ function ChatThread({
             />
           </PromptInputBody>
           <PromptInputFooter>
+            {bots.length > 1 && (
+              <PromptInputTools>
+                <PromptInputSelect
+                  value={botId}
+                  onValueChange={(value) => {
+                    if (typeof value === "string") onBotChange(value)
+                  }}
+                >
+                  <PromptInputSelectTrigger>
+                    <PromptInputSelectValue>
+                      {bots.find((bot) => bot.id === botId)?.name}
+                    </PromptInputSelectValue>
+                  </PromptInputSelectTrigger>
+                  <PromptInputSelectContent>
+                    {bots.map((bot) => (
+                      <PromptInputSelectItem key={bot.id} value={bot.id}>
+                        {bot.name}
+                      </PromptInputSelectItem>
+                    ))}
+                  </PromptInputSelectContent>
+                </PromptInputSelect>
+              </PromptInputTools>
+            )}
             <PromptInputSubmit status={status} onStop={stop} />
           </PromptInputFooter>
         </PromptInput>

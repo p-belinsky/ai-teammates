@@ -10,7 +10,6 @@ export async function getUserChat(userId: string, chatId: string) {
     with: {
       members: {
         orderBy: [asc(chatMembers.joinedAt)],
-        limit: 1,
         with: { bot: true },
       },
     },
@@ -18,12 +17,15 @@ export async function getUserChat(userId: string, chatId: string) {
 
   if (!chat) return null
 
-  // Group chats are not handled yet, so the chat shows its first bot
-  const bot = chat.members[0]?.bot ?? null
+  // Every member in the order they joined, so a group chat can offer all of them
+  const bots = chat.members.map((member) => member.bot)
 
   return {
     id: chat.id,
-    name: chat.name ?? bot?.name ?? "Untitled chat",
-    bot,
+    kind: chat.kind,
+    name: chat.name ?? bots[0]?.name ?? "Untitled chat",
+    bots,
+    // Only a direct chat has one bot to edit and to show on the desktop panel
+    bot: chat.kind === "direct" ? (bots[0] ?? null) : null,
   }
 }
