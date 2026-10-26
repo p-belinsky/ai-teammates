@@ -9,6 +9,7 @@ import {
 } from "@trigger.dev/sdk/chat/react"
 import {
   ArrowDownUpIcon,
+  ArrowRightIcon,
   EyeIcon,
   FilePenIcon,
   FileTextIcon,
@@ -53,6 +54,7 @@ import {
   PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
+import { ChatAvatar } from "@/components/chat-avatar"
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
 import {
   Trace,
@@ -152,6 +154,7 @@ function ChatThread({
   transport: TriggerChatTransport
 }) {
   const [input, setInput] = useState("")
+  const isGroup = bots.length > 1
   const { messages, sendMessage, status, stop } = useChat<ChatMessage>({
     id: chatId,
     messages: initialMessages,
@@ -175,35 +178,53 @@ function ChatThread({
           ) : (
             messages.map((message) => (
               <Message from={message.role} key={message.id}>
-                <MessageContent>
-                  {groupParts(message.parts).map((block) => {
-                    if (block.kind === "text") {
-                      return (
-                        <MessageResponse key={block.key}>
-                          {block.text}
-                        </MessageResponse>
-                      )
-                    }
+                {replySegments(message.parts).map((segment, index) => {
+                  // Only group chats mark who replied: a direct chat has one bot, already in the header
+                  const bot = isGroup
+                    ? bots.find((member) => member.id === segment.botId)
+                    : undefined
 
-                    if (block.kind === "screen") {
-                      return (
-                        <ShowScreen
-                          key={block.key}
-                          chatId={chatId}
-                          part={block.part}
-                        />
-                      )
-                    }
+                  const content = (
+                    <MessageContent key={index}>
+                      {groupParts(segment.parts).map((block) => {
+                        if (block.kind === "text") {
+                          return (
+                            <MessageResponse key={block.key}>
+                              {block.text}
+                            </MessageResponse>
+                          )
+                        }
 
-                    return (
-                      <Trace key={block.key}>
-                        {block.parts.map((part) => (
-                          <ToolRow key={part.toolCallId} part={part} />
-                        ))}
-                      </Trace>
-                    )
-                  })}
-                </MessageContent>
+                        if (block.kind === "screen") {
+                          return (
+                            <ShowScreen
+                              key={block.key}
+                              chatId={chatId}
+                              part={block.part}
+                            />
+                          )
+                        }
+
+                        return (
+                          <Trace key={block.key}>
+                            {block.parts.map((part) => (
+                              <ToolRow key={part.toolCallId} part={part} />
+                            ))}
+                          </Trace>
+                        )
+                      })}
+                    </MessageContent>
+                  )
+
+                  if (!bot) return content
+
+                  return (
+                    <div key={index} className="flex items-start gap-2">
+                      <ChatAvatar seed={bot.avatar} className="shrink-0" />
+                      {content}
+                    </div>
+                  )
+                })}
               </Message>
             ))
           )}
@@ -250,6 +271,24 @@ function ChatThread({
       </div>
     </div>
   )
+}
+
+// A reply changes bot after a handoff, so it splits at each data-bot part, which names the bot that follows
+type ReplySegment = { botId?: string; parts: ChatPart[] }
+
+function replySegments(parts: ChatPart[]): ReplySegment[] {
+  const segments: ReplySegment[] = []
+
+  for (const part of parts) {
+    if (part.type === "data-bot") {
+      segments.push({ botId: part.data.botId, parts: [] })
+    } else {
+      if (segments.length === 0) segments.push({ parts: [] })
+      segments.at(-1)?.parts.push(part)
+    }
+  }
+
+  return segments
 }
 
 // One line per tool call: what it did while running, what it did once it finished
@@ -312,6 +351,12 @@ function describeTool(part: ToolPart): {
         icon: <KeyboardIcon />,
         running: "Pressing a key",
         done: `Pressed ${[...(part.input?.modifiers ?? []), part.input?.key].join(" + ")}`,
+      }
+    case "tool-handoff":
+      return {
+        icon: <ArrowRightIcon />,
+        running: `Handing off to ${part.input?.to ?? "another bot"}`,
+        done: `Handed off to ${part.input?.to ?? "another bot"}`,
       }
     case "tool-view_screen":
       return {

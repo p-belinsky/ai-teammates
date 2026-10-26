@@ -1,15 +1,16 @@
-import { and, eq } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 
 import { db } from "./db"
 import { chatMembers } from "./db/schema"
 
-// Read on the server by the agent, so the bot never comes from the browser unchecked.
-// The browser names the bot for each turn, so it must be a member of this chat.
-export async function getChatBot(chatId: string, botId: string) {
-  const member = await db.query.chatMembers.findFirst({
-    where: and(eq(chatMembers.chatId, chatId), eq(chatMembers.botId, botId)),
+// Read on the server by the agent, in join order. The browser names the bot for each turn,
+// so the agent checks that bot against this list rather than trusting it.
+export async function getChatMembers(chatId: string) {
+  const members = await db.query.chatMembers.findMany({
+    where: eq(chatMembers.chatId, chatId),
+    orderBy: [asc(chatMembers.joinedAt)],
     with: { bot: true },
   })
 
-  return member?.bot ?? null
+  return members.map((member) => member.bot)
 }
