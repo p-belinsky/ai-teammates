@@ -39,8 +39,9 @@ function handoffTool(names: string[]) {
 export type ChatTools = ComputerTools & {
   handoff: ReturnType<typeof handoffTool>
 }
+// The bot a person sent a message to, so a group chat can name it on that message
 export type ChatUIMessage = UIMessage<
-  unknown,
+  { botId: string },
   { bot: { botId: string } },
   InferUITools<ChatTools>
 >
@@ -154,7 +155,10 @@ export const chatAgent = chat
           ({ steps }) => findHandoff(steps) !== undefined,
         ],
       })
-      await chat.pipe(first)
+      // pipeAndCapture, not pipe: only a captured turn saves the reply text to the transcript
+      const { message: firstReply } = await chat.pipeAndCapture(first, {
+        signal,
+      })
 
       const handoff = findHandoff(await first.steps)
       if (!handoff) return
@@ -180,6 +184,13 @@ export const chatAgent = chat
         abortSignal: signal,
         stopWhen: stepCountIs(25),
       })
-      await chat.pipe(second)
+      // Same id as the first bot's reply, so the handoff stays one message. Parts are left out:
+      // the capture already holds them, and seeding them too would save them twice.
+      await chat.pipeAndCapture(second, {
+        signal,
+        originalMessages: firstReply
+          ? [{ ...firstReply, parts: [] }]
+          : undefined,
+      })
     },
   })

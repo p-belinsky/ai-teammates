@@ -55,6 +55,7 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
 import { ChatAvatar } from "@/components/chat-avatar"
+import { Badge } from "@/components/ui/badge"
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
 import {
   Trace,
@@ -155,17 +156,21 @@ function ChatThread({
 }) {
   const [input, setInput] = useState("")
   const isGroup = bots.length > 1
+  // The transcript ends with the person's message only while a reply is still being written, so
+  // reconnect to the stream only then. Otherwise a subscription stays open and doubles the next reply.
+  const replyInFlight = initialMessages.at(-1)?.role === "user"
   const { messages, sendMessage, status, stop } = useChat<ChatMessage>({
     id: chatId,
     messages: initialMessages,
     transport,
-    resume: initialMessages.length > 0,
+    resume: replyInFlight,
   })
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (!message.text.trim()) return
 
-    sendMessage({ text: message.text })
+    // Kept on the message, so the thread can show which bot it was sent to
+    sendMessage({ text: message.text }, { metadata: { botId } })
     setInput("")
   }
 
@@ -176,8 +181,17 @@ function ChatThread({
           {messages.length === 0 ? (
             <ConversationEmptyState />
           ) : (
-            messages.map((message) => (
+            messages.map((message, messageIndex) => (
               <Message from={message.role} key={message.id}>
+                {isGroup && message.role === "user" && (
+                  <AddressedBot
+                    bot={bots.find(
+                      (bot) =>
+                        bot.id ===
+                        addressedBotId(message, messages[messageIndex + 1])
+                    )}
+                  />
+                )}
                 {replySegments(message.parts).map((segment, index) => {
                   // Only group chats mark who replied: a direct chat has one bot, already in the header
                   const bot = isGroup
@@ -270,6 +284,27 @@ function ChatThread({
         </PromptInput>
       </div>
     </div>
+  )
+}
+
+// The bot a person's message went to: the one picked when it was sent, or else the bot that opens
+// the reply. Storage keeps the reply's data-bot part but not the message's metadata, so reloads need the reply.
+function addressedBotId(message: ChatMessage, reply?: ChatMessage) {
+  if (message.metadata?.botId) return message.metadata.botId
+
+  const opening = reply?.parts.find((part) => part.type === "data-bot")
+  if (opening?.type === "data-bot") return opening.data.botId
+}
+
+// Names the bot a person's message went to, above that message in a group chat
+function AddressedBot({ bot }: { bot?: ChatBot }) {
+  if (!bot) return null
+
+  return (
+    <Badge variant="secondary" className="self-end">
+      <ChatAvatar seed={bot.avatar} className="size-4 rounded-full" />
+      {bot.name}
+    </Badge>
   )
 }
 
