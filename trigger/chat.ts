@@ -3,6 +3,7 @@ import { chat } from "@trigger.dev/sdk/ai"
 import { stepCountIs, tool, type InferUITools, type UIMessage } from "ai"
 import { z } from "zod"
 
+import { MEMORY_PATH, memoryTools, readMemory } from "../lib/bot-memory"
 import { getChatMembers } from "../lib/chat-bot"
 import { computerTools } from "../lib/computer-use"
 import type { bots } from "../lib/db/schema"
@@ -36,9 +37,10 @@ function handoffTool(names: string[]) {
   })
 }
 
-export type ChatTools = ComputerTools & {
-  handoff: ReturnType<typeof handoffTool>
-}
+export type ChatTools = ComputerTools &
+  ReturnType<typeof memoryTools> & {
+    handoff: ReturnType<typeof handoffTool>
+  }
 // The bot a person sent a message to, so a group chat can name it on that message
 export type ChatUIMessage = UIMessage<
   { botId: string },
@@ -78,10 +80,12 @@ async function loadTurn(chatId: string, botId: string | undefined) {
 function buildSystemPrompt({
   bot,
   members,
+  memory,
   handoff,
 }: {
   bot: Bot
   members: Bot[]
+  memory: string
   handoff?: { from: string; reason: string }
 }) {
   const others = members.filter((member) => member.id !== bot.id)
@@ -100,6 +104,10 @@ function buildSystemPrompt({
     "You live in your own sandbox: an isolated Linux environment created for you alone. It has its own filesystem and network, and it is separate from the app and from every other bot's sandbox.",
     "You can work in that sandbox with bash, read_file, write_file and list_files. You also have a virtual desktop with a mouse and keyboard: mouse_move, mouse_click, mouse_scroll, keyboard_type and keyboard_press. Take view_screen before you click so you know where things are, and again afterwards to check the result. Mouse coordinates are pixels from the top-left corner of the screen.",
     "Use show_screen only when the person asks what is on the screen. It shows them the screenshot.",
+    `Your memory is the list of notes below. It was loaded at the start of this turn and covers every chat with you, so use it to answer about things the person told you before, even in another chat. When the person tells you something worth keeping, such as their name, preferences, plans or facts about their work, save it with remember. Don't save a note that is already listed. To correct or remove a note, read ${MEMORY_PATH} and rewrite it with write_file.`,
+    memory.trim()
+      ? `What you remember:\n${memory.trim()}`
+      : "You have no saved notes yet.",
     inGroup
       ? "Use handoff to pass the conversation to another bot in this chat, named exactly as listed above. Use it only when that bot's job clearly fits the person's message better than yours. Before you call it, say in one sentence who you are passing it to, and give a short reason. Your reply ends once the handoff goes through, and that bot answers from there. Otherwise answer yourself, even when the topic is outside your job."
       : null,
@@ -125,6 +133,7 @@ export const chatAgent = chat
 
       return {
         ...computerTools(bot.sandboxId),
+        ...memoryTools(bot.sandboxId),
         handoff: handoffTool(names),
       }
     },
@@ -134,7 +143,13 @@ export const chatAgent = chat
 
       // Persisted with the reply, so the UI can show which bot wrote it
       writer.write({ type: "data-bot", data: { botId: bot.id } })
-      chat.prompt.set(buildSystemPrompt({ bot, members }))
+      chat.prompt.set(
+        buildSystemPrompt({
+          bot,
+          members,
+          memory: await readMemory(bot.sandboxId),
+        })
+      )
     },
     run: async ({
       chatId,
@@ -172,6 +187,7 @@ export const chatAgent = chat
         buildSystemPrompt({
           bot: target,
           members,
+          memory: await readMemory(target.sandboxId),
           handoff: { from: from.name, reason: handoff.reason },
         })
       )
@@ -180,7 +196,10 @@ export const chatAgent = chat
       const second = streamText({
         model: neon("claude-sonnet-5"),
         messages: [...messages, ...(await first.response).messages],
-        tools: computerTools(target.sandboxId),
+        tools: {
+          ...computerTools(target.sandboxId),
+          ...memoryTools(target.sandboxId),
+        },
         abortSignal: signal,
         stopWhen: stepCountIs(25),
       })

@@ -23,7 +23,7 @@ type ScreenshotResult = {
 }
 
 // Errors go back to the model as data so it can recover, instead of failing the turn
-async function attempt<T>(
+export async function attempt<T>(
   run: () => Promise<T>
 ): Promise<T | { error: string }> {
   try {
@@ -40,7 +40,7 @@ function truncate(text: string) {
   return `${text.slice(0, MAX_OUTPUT_CHARS)}\n[output truncated]`
 }
 
-function shellQuote(value: string) {
+export function shellQuote(value: string) {
   return `'${value.replaceAll("'", `'\\''`)}'`
 }
 

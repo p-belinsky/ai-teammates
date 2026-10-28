@@ -10,6 +10,7 @@ import {
 import {
   ArrowDownUpIcon,
   ArrowRightIcon,
+  BrainIcon,
   EyeIcon,
   FilePenIcon,
   FileTextIcon,
@@ -398,6 +399,12 @@ function describeTool(part: ToolPart): {
         icon: <EyeIcon />,
         running: "Looking at the screen",
         done: "Looked at the screen",
+      }
+    case "tool-remember":
+      return {
+        icon: <BrainIcon />,
+        running: "Saving a note",
+        done: `Remembered ${part.input?.note ?? "a note"}`,
       }
   }
 }

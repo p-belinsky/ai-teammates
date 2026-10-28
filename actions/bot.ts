@@ -5,6 +5,7 @@ import { DaytonaNotFoundError } from "@daytona/sdk"
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { MEMORY_PATH } from "@/lib/bot-memory"
 import { daytona } from "@/lib/daytona"
 import { db } from "@/lib/db"
 import { bots, botFormSchema, chatMembers, chats } from "@/lib/db/schema"
@@ -24,6 +25,9 @@ export async function createBot(input: unknown) {
   }
 
   try {
+    // Every bot starts with a blank memory file, so it can keep notes across its chats
+    await sandbox.process.executeCommand(`touch ${MEMORY_PATH}`)
+
     // One transaction so the bot never exists without its direct chat
     const { bot, chat } = await db.transaction(async (tx) => {
       const [bot] = await tx
