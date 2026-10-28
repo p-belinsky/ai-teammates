@@ -7,19 +7,24 @@ import { BotDialog } from "@/components/bot-dialog"
 import { ChatAvatar } from "@/components/chat-avatar"
 import { useChatLayout } from "@/components/chat-layout"
 import { GroupChatAvatar } from "@/components/group-chat-avatar"
+import { GroupChatDialog } from "@/components/group-chat-dialog"
 import { Button } from "@/components/ui/button"
 import type { bots } from "@/lib/db/schema"
+import type { UserBot } from "@/queries/bots"
 
 type ChatHeaderProps = {
   chat: {
+    id: string
     kind: "direct" | "group"
     name: string
     bot: typeof bots.$inferSelect | null
     bots: (typeof bots.$inferSelect)[]
   }
+  // Every bot the user has, so a group chat can add one when it's edited
+  userBots: UserBot[]
 }
 
-function ChatHeader({ chat }: ChatHeaderProps) {
+function ChatHeader({ chat, userBots }: ChatHeaderProps) {
   const [editOpen, setEditOpen] = React.useState(false)
   const { desktopOpen, toggleDesktop } = useChatLayout()
 
@@ -43,13 +48,25 @@ function ChatHeader({ chat }: ChatHeaderProps) {
           />
         </>
       ) : (
-        <div className="flex min-w-0 items-center gap-2 px-2">
-          <GroupChatAvatar
-            seeds={chat.bots.map((bot) => bot.avatar)}
-            className="shrink-0"
+        <>
+          <Button
+            variant="ghost"
+            className="h-9 min-w-0 justify-start px-2"
+            onClick={() => setEditOpen(true)}
+          >
+            <GroupChatAvatar
+              seeds={chat.bots.map((bot) => bot.avatar)}
+              className="shrink-0"
+            />
+            <span className="truncate text-sm font-medium">{chat.name}</span>
+          </Button>
+          <GroupChatDialog
+            bots={userBots}
+            chat={chat}
+            open={editOpen}
+            onOpenChange={setEditOpen}
           />
-          <span className="truncate text-sm font-medium">{chat.name}</span>
-        </div>
+        </>
       )}
       {/* Group chats have no desktop: each message is answered by a different bot */}
       {chat.kind === "direct" && (

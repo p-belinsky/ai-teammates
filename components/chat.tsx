@@ -109,7 +109,11 @@ type ChatBot = { id: string; name: string; avatar: string }
 
 export function Chat({ chatId, bots }: { chatId: string; bots: ChatBot[] }) {
   // The bot that answers the next message. A direct chat has one; a group chat lets the person pick
-  const [botId, setBotId] = useState(bots[0]?.id ?? "")
+  const [pickedBotId, setBotId] = useState(bots[0]?.id ?? "")
+  // The group can change under the chat, so a picked bot that was removed falls back to the first
+  const botId = bots.some((bot) => bot.id === pickedBotId)
+    ? pickedBotId
+    : (bots[0]?.id ?? "")
 
   const transport = useTriggerChatTransport<typeof chatAgent>({
     task: "chat",

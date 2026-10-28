@@ -14,6 +14,16 @@ import { getUserChat } from "@/queries/chats"
 const startSession = chat.createStartSessionAction<typeof chatAgent>("chat")
 const loadTranscript = chat.createLoadTranscriptAction(defaultStorage)
 
+// Only the signed-in user's own bots can join, whatever the form sent
+async function hasOnlyOwnedBots(userId: string, botIds: string[]) {
+  const owned = await db
+    .select({ id: bots.id })
+    .from(bots)
+    .where(and(eq(bots.userId, userId), inArray(bots.id, botIds)))
+
+  return owned.length === botIds.length
+}
+
 export async function createGroupChat(input: unknown) {
   const { userId } = await auth.protect()
 
@@ -25,13 +35,7 @@ export async function createGroupChat(input: unknown) {
   // Picking the same bot twice counts once
   const botIds = [...new Set(parsed.data.botIds)]
 
-  // Only the signed-in user's own bots can join, whatever the form sent
-  const owned = await db
-    .select({ id: bots.id })
-    .from(bots)
-    .where(and(eq(bots.userId, userId), inArray(bots.id, botIds)))
-
-  if (botIds.length < 2 || owned.length !== botIds.length) {
+  if (botIds.length < 2 || !(await hasOnlyOwnedBots(userId, botIds))) {
     return { error: "Pick at least two of your bots" }
   }
 
@@ -52,6 +56,79 @@ export async function createGroupChat(input: unknown) {
   revalidatePath("/", "layout")
 
   return { id: groupChat.id }
+}
+
+export async function updateGroupChat(chatId: string, input: unknown) {
+  const { userId } = await auth.protect()
+
+  const parsed = groupChatFormSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const botIds = [...new Set(parsed.data.botIds)]
+
+  if (botIds.length < 2 || !(await hasOnlyOwnedBots(userId, botIds))) {
+    return { error: "Pick at least two of your bots" }
+  }
+
+  // Scoped to the signed-in user's group chats, so direct chats can't change members
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(chats)
+      .set({ name: parsed.data.name })
+      .where(
+        and(
+          eq(chats.id, chatId),
+          eq(chats.userId, userId),
+          eq(chats.kind, "group")
+        )
+      )
+      .returning({ id: chats.id })
+
+    if (!row) return false
+
+    // Swap the members for the picked bots in one transaction, so the chat is never left empty
+    await tx.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+    await tx
+      .insert(chatMembers)
+      .values(botIds.map((botId) => ({ chatId, botId })))
+
+    return true
+  })
+
+  if (!updated) {
+    return { error: "Group chat not found" }
+  }
+
+  // The sidebar and the chat header both show the name and members, so refresh the layout
+  revalidatePath("/", "layout")
+
+  return { id: chatId }
+}
+
+export async function deleteGroupChat(chatId: string) {
+  const { userId } = await auth.protect()
+
+  // Its members go with it: chat_members cascades from the chat. The bots themselves stay.
+  const [deleted] = await db
+    .delete(chats)
+    .where(
+      and(
+        eq(chats.id, chatId),
+        eq(chats.userId, userId),
+        eq(chats.kind, "group")
+      )
+    )
+    .returning({ id: chats.id })
+
+  if (!deleted) {
+    return { error: "Group chat not found" }
+  }
+
+  revalidatePath("/", "layout")
+
+  return { id: deleted.id }
 }
 
 // Every action takes a chatId from the browser, so check it belongs to the signed-in user
