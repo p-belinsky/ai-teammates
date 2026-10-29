@@ -67,6 +67,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/components/ui/trace"
+import { usePlanGate } from "@/hooks/use-plan-gate"
 import type { chatAgent } from "@/trigger/chat"
 
 type ChatMessage = InferChatUIMessage<typeof chatAgent>
@@ -160,6 +161,7 @@ function ChatThread({
   transport: TriggerChatTransport
 }) {
   const [input, setInput] = useState("")
+  const { requireBots } = usePlanGate()
   const isGroup = bots.length > 1
   // The transcript ends with the person's message only while a reply is still being written, so
   // reconnect to the stream only then. Otherwise a subscription stays open and doubles the next reply.
@@ -173,6 +175,9 @@ function ChatThread({
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (!message.text.trim()) return
+
+    // Sending runs the bot's sandbox, so a free account gets the upgrade toast and keeps its draft
+    if (!requireBots()) return
 
     // Kept on the message, so the thread can show which bot it was sent to
     sendMessage({ text: message.text }, { metadata: { botId } })

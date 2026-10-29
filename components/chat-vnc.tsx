@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { usePlanGate } from "@/hooks/use-plan-gate"
 import { cn } from "cn"
 
 type VncSlotName = "panel" | "dialog"
@@ -43,6 +44,7 @@ function ChatVncProvider({
   const [error, setError] = React.useState(false)
   const [loaded, setLoaded] = React.useState(false)
   const [body, setBody] = React.useState<HTMLElement | null>(null)
+  const { showUpgrade } = usePlanGate()
 
   React.useEffect(() => {
     setBody(document.body)
@@ -87,12 +89,16 @@ function ChatVncProvider({
   const connect = React.useCallback(() => {
     fetch(`/api/chats/${chatId}/vnc`)
       .then(async (response) => {
-        if (!response.ok) throw new Error("Couldn't connect to the desktop")
+        if (!response.ok) {
+          // The route answers 403 when the account has no paid plan, so say why
+          if (response.status === 403) showUpgrade()
+          throw new Error("Couldn't connect to the desktop")
+        }
         const { url } = (await response.json()) as { url: string }
         setSrc(url)
       })
       .catch(() => setError(true))
-  }, [chatId])
+  }, [chatId, showUpgrade])
 
   const attach = React.useCallback(
     (name: VncSlotName, element: HTMLElement) => {

@@ -6,6 +6,7 @@ import { chat, defaultStorage } from "@trigger.dev/sdk/ai"
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { canUseBots, UPGRADE_MESSAGE } from "@/lib/billing"
 import { db } from "@/lib/db"
 import { bots, chatMembers, chats, groupChatFormSchema } from "@/lib/db/schema"
 import { chatAgent } from "@/trigger/chat"
@@ -141,8 +142,16 @@ async function getOwnedChat(chatId: string) {
   return userChat
 }
 
+// Talking to a bot runs its sandbox, so a free account can't open a bot session
+async function getBotChat(chatId: string) {
+  const { has } = await auth.protect()
+  if (!canUseBots(has)) throw new Error(UPGRADE_MESSAGE)
+
+  return getOwnedChat(chatId)
+}
+
 export async function mintChatAccessToken(chatId: string) {
-  await getOwnedChat(chatId)
+  await getBotChat(chatId)
 
   return triggerAuth.createPublicToken({
     scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
@@ -153,7 +162,7 @@ export async function mintChatAccessToken(chatId: string) {
 export async function startChatSession(
   params: Parameters<typeof startSession>[0]
 ) {
-  await getOwnedChat(params.chatId)
+  await getBotChat(params.chatId)
 
   return startSession(params)
 }

@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
+import { usePlanGate } from "@/hooks/use-plan-gate"
 import {
   Sidebar,
   SidebarContent,
@@ -77,6 +78,7 @@ export function AppSidebar({
   const [botDialogOpen, setBotDialogOpen] = React.useState(false)
   const [groupChatOpen, setGroupChatOpen] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const { requireBots } = usePlanGate()
   const router = useRouter()
   const { chatId } = useParams<{ chatId?: string }>()
   const { state } = useSidebar()
@@ -111,7 +113,11 @@ export function AppSidebar({
                 className="w-max"
               >
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => setBotDialogOpen(true)}>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (requireBots()) setBotDialogOpen(true)
+                    }}
+                  >
                     <PlusIcon />
                     Create new bot
                   </DropdownMenuItem>

@@ -41,7 +41,7 @@
       "source": "clerk/skills",
       "sourceType": "github",
       "skillPath": "skills/clerk-billing/SKILL.md",
-      "computedHash": "0ee5dfc3fcdf0ce2b75c3194ed6f82122eca5df86af6d29d8ccbf77f72761a0f"
+      "computedHash": "73162b520801878d7ed848f24976f6c4b177bbe201aa71fbed4dda9f5b04304e"
     },
     "clerk-chrome-extension-patterns": {
       "source": "clerk/skills",

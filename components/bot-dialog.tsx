@@ -44,6 +44,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { usePlanGate } from "@/hooks/use-plan-gate"
 import { type bots, botFormSchema } from "@/lib/db/schema"
 
 const JOB_PRESETS = [
@@ -84,9 +85,17 @@ function BotDialog({
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
   const open = openProp ?? uncontrolledOpen
   const setOpen = onOpenChange ?? setUncontrolledOpen
+  const { requireBots } = usePlanGate()
+
+  // Only creating a bot needs a paid plan, so editing one stays open to everyone
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && !bot && !requireBots()) return
+
+    setOpen(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {showTrigger && (
         <DialogTrigger render={<Button variant="secondary" />}>
           <PlusIcon data-icon="inline-start" />

@@ -9,9 +9,15 @@ import { MEMORY_PATH } from "@/lib/bot-memory"
 import { daytona } from "@/lib/daytona"
 import { db } from "@/lib/db"
 import { bots, botFormSchema, chatMembers, chats } from "@/lib/db/schema"
+import { canUseBots, UPGRADE_MESSAGE } from "@/lib/billing"
 
 export async function createBot(input: unknown) {
-  const { userId } = await auth.protect()
+  const { userId, has } = await auth.protect()
+
+  // Creating a bot also creates its sandbox, so it needs a paid plan
+  if (!canUseBots(has)) {
+    return { error: UPGRADE_MESSAGE }
+  }
 
   const parsed = botFormSchema.safeParse(input)
   if (!parsed.success) {

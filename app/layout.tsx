@@ -34,8 +34,8 @@ export default function RootLayout({
         <ClerkProvider>
           <ThemeProvider>
             <TooltipProvider>
-              {children}
-              <Toaster />
+              {/* Toaster's provider has to wrap the pages, or useToastManager has nothing to read */}
+              <Toaster>{children}</Toaster>
             </TooltipProvider>
           </ThemeProvider>
         </ClerkProvider>
