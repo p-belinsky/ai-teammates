@@ -3,7 +3,7 @@
 import * as React from "react"
 import { UserButton } from "@clerk/nextjs"
 import { formatDistanceToNowStrict } from "date-fns"
-import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react"
+import { GaugeIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 
@@ -185,7 +185,15 @@ export function AppSidebar({
         <SidebarFooter className="mt-auto">
           <SidebarMenu>
             <SidebarMenuItem>
-              <UserButton showName appearance={userButtonAppearance} />
+              <UserButton showName appearance={userButtonAppearance}>
+                <UserButton.MenuItems>
+                  <UserButton.Link
+                    label="Usage"
+                    labelIcon={<GaugeIcon />}
+                    href="/usage"
+                  />
+                </UserButton.MenuItems>
+              </UserButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>

@@ -4,6 +4,7 @@ import { posix } from "node:path"
 import { z } from "zod"
 
 import { daytona } from "./daytona"
+import { startSandboxClock } from "./usage"
 
 // Screenshots live in the bot's sandbox so the chat transcript only stores a path, not the image
 export const SCREENSHOT_DIR = "/home/daytona/screenshots"
@@ -76,6 +77,7 @@ export async function readBytes(sandbox: Sandbox, path: string) {
 }
 
 export async function readySandbox(sandboxId: string) {
+  startSandboxClock(sandboxId)
   const sandbox = await daytona.get(sandboxId)
   if (sandbox.state !== "started") await sandbox.start()
 

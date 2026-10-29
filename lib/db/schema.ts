@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   pgEnum,
   pgTable,
   primaryKey,
@@ -111,6 +112,47 @@ export const groupChatFormSchema = insertChatSchema
     path: ["name"],
     message: "Name your group chat",
   })
+
+export const usageMeterEnum = pgEnum("usage_meter", [
+  "ai_tokens",
+  "sandbox_seconds",
+])
+
+// Append-only record of every charge. Micro-dollars for ai_tokens, seconds for sandbox_seconds.
+export const usageEvents = pgTable(
+  "usage_events",
+  {
+    id: text()
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    // Third-party user id (Clerk)
+    userId: text().notNull(),
+    meter: usageMeterEnum().notNull(),
+    amount: integer().notNull(),
+    // The billing period the charge falls in, from the Clerk subscription
+    periodStart: timestamp().notNull(),
+    // Unique per charge, so a retried turn or step can't be recorded twice
+    reference: text().notNull().unique(),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    index("usage_events_user_period_idx").on(table.userId, table.periodStart),
+  ]
+)
+
+// Running total per user, meter and period. Changed in the same transaction as its event.
+export const usageBalances = pgTable(
+  "usage_balances",
+  {
+    userId: text().notNull(),
+    meter: usageMeterEnum().notNull(),
+    periodStart: timestamp().notNull(),
+    used: integer().notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.meter, table.periodStart] }),
+  ]
+)
 
 export const botsRelations = relations(bots, ({ many }) => ({
   memberships: many(chatMembers),

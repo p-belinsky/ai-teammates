@@ -1,12 +1,19 @@
 import { neon } from "@neon/ai-sdk-provider"
 import { chat } from "@trigger.dev/sdk/ai"
-import { stepCountIs, tool, type InferUITools, type UIMessage } from "ai"
+import {
+  stepCountIs,
+  tool,
+  type InferUITools,
+  type LanguageModelUsage,
+  type UIMessage,
+} from "ai"
 import { z } from "zod"
 
 import { MEMORY_PATH, memoryTools, readMemory } from "../lib/bot-memory"
-import { getChatMembers } from "../lib/chat-bot"
+import { getChatMembers, getChatOwner } from "../lib/chat-bot"
 import { computerTools } from "../lib/computer-use"
 import type { bots } from "../lib/db/schema"
+import { assertWithinBudget, meterTurn, type TurnMeter } from "../lib/usage"
 
 type Bot = typeof bots.$inferSelect
 
@@ -119,6 +126,16 @@ function buildSystemPrompt({
     .join("\n\n")
 }
 
+// Charges each model step as it finishes, so a turn that stops partway still records what it used
+function recordSteps(meter: TurnMeter, label: string) {
+  let step = 0
+
+  return ({ usage }: { usage: LanguageModelUsage }) => {
+    step += 1
+    meter.tokens(`${label}:${step}`, usage)
+  }
+}
+
 export const chatAgent = chat
   .withUIMessage<ChatUIMessage>()
   .withClientData({ schema: z.object({ botId: z.string().min(1) }) })
@@ -137,19 +154,11 @@ export const chatAgent = chat
         handoff: handoffTool(names),
       }
     },
-    // Every turn can be a different bot, so the prompt is set per turn rather than once per worker
     onTurnStart: async ({ chatId, clientData, writer }) => {
-      const { bot, members } = await loadTurn(chatId, clientData?.botId)
+      const { bot } = await loadTurn(chatId, clientData?.botId)
 
       // Persisted with the reply, so the UI can show which bot wrote it
       writer.write({ type: "data-bot", data: { botId: bot.id } })
-      chat.prompt.set(
-        buildSystemPrompt({
-          bot,
-          members,
-          memory: await readMemory(bot.sandboxId),
-        })
-      )
     },
     run: async ({
       chatId,
@@ -158,58 +167,88 @@ export const chatAgent = chat
       tools,
       signal,
       streamText,
+      ctx,
     }) => {
-      const first = streamText({
-        model: neon("claude-sonnet-5"),
-        messages,
-        tools,
-        abortSignal: signal,
-        // A handoff that went through ends this bot's turn, so the bot it names takes over
-        stopWhen: [
-          stepCountIs(25),
-          ({ steps }) => findHandoff(steps) !== undefined,
-        ],
-      })
-      // pipeAndCapture, not pipe: only a captured turn saves the reply text to the transcript
-      const { message: firstReply } = await chat.pipeAndCapture(first, {
-        signal,
-      })
+      const userId = await getChatOwner(chatId)
+      // Refuses the turn before any model or sandbox is used when the budget is spent
+      const period = await assertWithinBudget(userId)
 
-      const handoff = findHandoff(await first.steps)
-      if (!handoff) return
-
-      const { bot: from, members } = await loadTurn(chatId, clientData?.botId)
-      const target = members.find((member) => member.name === handoff.to)
-      if (!target) return
-
-      chat.response.write({ type: "data-bot", data: { botId: target.id } })
-      chat.prompt.set(
-        buildSystemPrompt({
-          bot: target,
-          members,
-          memory: await readMemory(target.sandboxId),
-          handoff: { from: from.name, reason: handoff.reason },
-        })
-      )
-
-      // The new bot continues from the first bot's reply, and gets no handoff tool of its own
-      const second = streamText({
-        model: neon("claude-sonnet-5"),
-        messages: [...messages, ...(await first.response).messages],
-        tools: {
-          ...computerTools(target.sandboxId),
-          ...memoryTools(target.sandboxId),
+      // Each attempt of each run is charged once. A retry gets a new attempt number, so its spend counts too.
+      await meterTurn(
+        {
+          userId,
+          period,
+          reference: `${chatId}:${ctx.run.id}:${ctx.attempt.number}`,
         },
-        abortSignal: signal,
-        stopWhen: stepCountIs(25),
-      })
-      // Same id as the first bot's reply, so the handoff stays one message. Parts are left out:
-      // the capture already holds them, and seeding them too would save them twice.
-      await chat.pipeAndCapture(second, {
-        signal,
-        originalMessages: firstReply
-          ? [{ ...firstReply, parts: [] }]
-          : undefined,
-      })
+        async (meter) => {
+          // Reading memory starts the bot's sandbox, so it happens here, inside the metered turn
+          const current = await loadTurn(chatId, clientData?.botId)
+          chat.prompt.set(
+            buildSystemPrompt({
+              bot: current.bot,
+              members: current.members,
+              memory: await readMemory(current.bot.sandboxId),
+            })
+          )
+
+          const first = streamText({
+            model: neon("claude-sonnet-5"),
+            messages,
+            tools,
+            abortSignal: signal,
+            onStepEnd: recordSteps(meter, "first"),
+            // A handoff that went through ends this bot's turn, so the bot it names takes over
+            stopWhen: [
+              stepCountIs(25),
+              ({ steps }) => findHandoff(steps) !== undefined,
+            ],
+          })
+          // pipeAndCapture, not pipe: only a captured turn saves the reply text to the transcript
+          const { message: firstReply } = await chat.pipeAndCapture(first, {
+            signal,
+          })
+
+          const handoff = findHandoff(await first.steps)
+          if (!handoff) return
+
+          const { bot: from, members } = await loadTurn(
+            chatId,
+            clientData?.botId
+          )
+          const target = members.find((member) => member.name === handoff.to)
+          if (!target) return
+
+          chat.response.write({ type: "data-bot", data: { botId: target.id } })
+          chat.prompt.set(
+            buildSystemPrompt({
+              bot: target,
+              members,
+              memory: await readMemory(target.sandboxId),
+              handoff: { from: from.name, reason: handoff.reason },
+            })
+          )
+
+          // The new bot continues from the first bot's reply, and gets no handoff tool of its own
+          const second = streamText({
+            model: neon("claude-sonnet-5"),
+            messages: [...messages, ...(await first.response).messages],
+            tools: {
+              ...computerTools(target.sandboxId),
+              ...memoryTools(target.sandboxId),
+            },
+            abortSignal: signal,
+            stopWhen: stepCountIs(25),
+            onStepEnd: recordSteps(meter, "second"),
+          })
+          // Same id as the first bot's reply, so the handoff stays one message. Parts are left out:
+          // the capture already holds them, and seeding them too would save them twice.
+          await chat.pipeAndCapture(second, {
+            signal,
+            originalMessages: firstReply
+              ? [{ ...firstReply, parts: [] }]
+              : undefined,
+          })
+        }
+      )
     },
   })

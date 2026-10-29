@@ -30,6 +30,7 @@ import {
   mintChatAccessToken,
   startChatSession,
 } from "@/actions/chat"
+import { checkUsageAllowed } from "@/actions/usage"
 import {
   Conversation,
   ConversationContent,
@@ -161,7 +162,7 @@ function ChatThread({
   transport: TriggerChatTransport
 }) {
   const [input, setInput] = useState("")
-  const { requireBots } = usePlanGate()
+  const { requireBots, showUsageLimit } = usePlanGate()
   const isGroup = bots.length > 1
   // The transcript ends with the person's message only while a reply is still being written, so
   // reconnect to the stream only then. Otherwise a subscription stays open and doubles the next reply.
@@ -173,11 +174,17 @@ function ChatThread({
     resume: replyInFlight,
   })
 
-  const handleSubmit = (message: PromptInputMessage) => {
+  const handleSubmit = async (message: PromptInputMessage) => {
     if (!message.text.trim()) return
 
     // Sending runs the bot's sandbox, so a free account gets the upgrade toast and keeps its draft
     if (!requireBots()) return
+
+    // A spent budget also keeps the draft, and the toast says when it resets
+    if (!(await checkUsageAllowed())) {
+      showUsageLimit()
+      return
+    }
 
     // Kept on the message, so the thread can show which bot it was sent to
     sendMessage({ text: message.text }, { metadata: { botId } })

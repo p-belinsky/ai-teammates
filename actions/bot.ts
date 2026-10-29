@@ -10,6 +10,7 @@ import { daytona } from "@/lib/daytona"
 import { db } from "@/lib/db"
 import { bots, botFormSchema, chatMembers, chats } from "@/lib/db/schema"
 import { canUseBots, UPGRADE_MESSAGE } from "@/lib/billing"
+import { getCurrentPeriod, stopAndRecordSandbox } from "@/lib/usage"
 
 export async function createBot(input: unknown) {
   const { userId, has } = await auth.protect()
@@ -25,7 +26,11 @@ export async function createBot(input: unknown) {
   }
 
   // The sandbox comes first so the bot row can store its id
-  const sandbox = await daytona.create().catch(() => null)
+  const startedAt = Date.now()
+  // Auto-stop is a backstop: each turn stops the sandbox itself, so usage is charged from that
+  const sandbox = await daytona
+    .create({ autoStopInterval: 15 })
+    .catch(() => null)
   if (!sandbox) {
     return { error: "Couldn't create the bot's sandbox. Try again." }
   }
@@ -33,6 +38,15 @@ export async function createBot(input: unknown) {
   try {
     // Every bot starts with a blank memory file, so it can keep notes across its chats
     await sandbox.process.executeCommand(`touch ${MEMORY_PATH}`)
+
+    // The new sandbox would idle until auto-stop, so stop it now and charge the time it ran
+    await stopAndRecordSandbox({
+      userId,
+      period: await getCurrentPeriod(userId),
+      sandboxId: sandbox.id,
+      startedAt,
+      reference: `bot:${sandbox.id}`,
+    })
 
     // One transaction so the bot never exists without its direct chat
     const { bot, chat } = await db.transaction(async (tx) => {

@@ -13,8 +13,10 @@ import {
   UPGRADE_MESSAGE,
 } from "@/lib/billing"
 
+const USAGE_PATH = "/usage"
+
 // Each require check returns true when the account can use that part of the app.
-// A blocked check shows an upgrade toast that links to the pricing page instead.
+// A blocked check shows a toast that links to the page where the person can act on it.
 export function usePlanGate() {
   const { has } = useAuth()
   const toastManager = useToastManager()
@@ -32,6 +34,19 @@ export function usePlanGate() {
     })
   }, [toastManager, router])
 
+  const showUsageLimit = useCallback(() => {
+    toastManager.add({
+      type: "error",
+      title: "Usage limit reached",
+      description:
+        "This period's budget is used up. It resets at the end of your billing period.",
+      actionProps: {
+        children: "View usage",
+        onClick: () => router.push(USAGE_PATH),
+      },
+    })
+  }, [toastManager, router])
+
   // Until Clerk has loaded the session there is no has() to check, so treat it as blocked
   const requireFeature = useCallback(
     (canUse: (has: HasFeature) => boolean) => {
@@ -45,6 +60,7 @@ export function usePlanGate() {
 
   return {
     showUpgrade,
+    showUsageLimit,
     requireBots: useCallback(
       () => requireFeature(canUseBots),
       [requireFeature]
