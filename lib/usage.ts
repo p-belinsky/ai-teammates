@@ -1,4 +1,5 @@
 import { createClerkClient } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import type { LanguageModelUsage } from "ai"
 import { and, eq, sql } from "drizzle-orm"
 import { AsyncLocalStorage } from "node:async_hooks"
@@ -202,8 +203,20 @@ export async function stopAndRecordSandbox({
     await sandbox.stop()
   } catch (error) {
     // Auto-stop still ends it, so only the idle tail goes uncharged
-    console.error("Couldn't stop sandbox", { sandboxId, error })
+    Sentry.logger.error("Couldn't stop sandbox", {
+      sandboxId,
+      userId,
+      reason: error instanceof Error ? error.message : String(error),
+    })
   }
+
+  const seconds = Math.ceil((Date.now() - startedAt) / 1000)
+  Sentry.logger.info("Sandbox stopped", {
+    sandboxId,
+    userId,
+    seconds,
+    charged: period !== null,
+  })
 
   if (!period) return
 
@@ -211,7 +224,7 @@ export async function stopAndRecordSandbox({
     userId,
     period,
     meter: "sandbox_seconds",
-    amount: Math.ceil((Date.now() - startedAt) / 1000),
+    amount: seconds,
     reference: `${reference}:sandbox:${sandboxId}`,
   })
 }

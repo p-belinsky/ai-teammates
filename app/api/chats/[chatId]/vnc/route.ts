@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 
 import { canUseSandboxes, UPGRADE_MESSAGE } from "@/lib/billing"
 import { desktopUrl } from "@/lib/computer-use"
@@ -21,10 +22,14 @@ export async function GET(
 
   try {
     const url = await desktopUrl(userChat.bot.sandboxId)
+    Sentry.logger.info("Desktop opened", { chatId, userId })
 
     return Response.json({ url }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
-    console.error("Desktop URL failed", { chatId, error })
+    Sentry.logger.error("Desktop URL failed", {
+      chatId,
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return new Response("Couldn't connect to the desktop", { status: 500 })
   }
 }

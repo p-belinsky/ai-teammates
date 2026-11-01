@@ -1,4 +1,5 @@
 import type { Sandbox } from "@daytona/sdk"
+import * as Sentry from "@sentry/nextjs"
 import { tool } from "ai"
 import { posix } from "node:path"
 import { z } from "zod"
@@ -79,7 +80,10 @@ export async function readBytes(sandbox: Sandbox, path: string) {
 export async function readySandbox(sandboxId: string) {
   startSandboxClock(sandboxId)
   const sandbox = await daytona.get(sandboxId)
-  if (sandbox.state !== "started") await sandbox.start()
+  if (sandbox.state !== "started") {
+    await sandbox.start()
+    Sentry.logger.info("Sandbox started", { sandboxId })
+  }
 
   return sandbox
 }

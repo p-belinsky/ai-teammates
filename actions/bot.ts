@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server"
 import { DaytonaNotFoundError } from "@daytona/sdk"
+import * as Sentry from "@sentry/nextjs"
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -32,8 +33,10 @@ export async function createBot(input: unknown) {
     .create({ autoStopInterval: 15 })
     .catch(() => null)
   if (!sandbox) {
+    Sentry.logger.error("Bot sandbox creation failed", { userId })
     return { error: "Couldn't create the bot's sandbox. Try again." }
   }
+  Sentry.logger.info("Bot sandbox created", { sandboxId: sandbox.id, userId })
 
   try {
     // Every bot starts with a blank memory file, so it can keep notes across its chats
@@ -71,12 +74,22 @@ export async function createBot(input: unknown) {
       return { bot, chat }
     })
 
+    Sentry.logger.info("Bot created", {
+      botId: bot.id,
+      chatId: chat.id,
+      userId,
+    })
+
     revalidatePath("/")
 
     return { id: bot.id, chatId: chat.id }
   } catch (error) {
     // No bot row points at this sandbox, so don't leave it behind
     await sandbox.delete().catch(() => {})
+    Sentry.logger.warn("Bot creation rolled back", {
+      sandboxId: sandbox.id,
+      userId,
+    })
     throw error
   }
 }
@@ -100,8 +113,11 @@ export async function updateBot(botId: string, input: unknown) {
     .returning({ id: bots.id })
 
   if (!bot) {
+    Sentry.logger.warn("Bot update skipped, bot not found", { botId, userId })
     return { error: "Bot not found" }
   }
+
+  Sentry.logger.info("Bot updated", { botId: bot.id, userId })
 
   // The bot's name and face also show in the sidebar, so refresh the layout
   revalidatePath("/", "layout")
@@ -130,13 +146,19 @@ export async function deleteBot(botId: string) {
     .where(and(eq(bots.id, botId), eq(bots.userId, userId)))
 
   if (!target) {
+    Sentry.logger.warn("Bot delete skipped, bot not found", { botId, userId })
     return { error: "Bot not found" }
   }
 
   // Delete the sandbox first: if that fails, the bot stays so the user can retry
   try {
     await deleteSandbox(target.sandboxId)
-  } catch {
+  } catch (error) {
+    Sentry.logger.error("Bot sandbox deletion failed", {
+      botId,
+      sandboxId: target.sandboxId,
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return { error: "Couldn't delete the bot's sandbox. Try again." }
   }
 
@@ -178,6 +200,8 @@ export async function deleteBot(botId: string) {
   if (!deleted) {
     return { error: "Bot not found" }
   }
+
+  Sentry.logger.info("Bot deleted", { botId, userId })
 
   revalidatePath("/", "layout")
 

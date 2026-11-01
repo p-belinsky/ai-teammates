@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import { auth as triggerAuth } from "@trigger.dev/sdk"
 import { chat, defaultStorage } from "@trigger.dev/sdk/ai"
 import { and, eq, inArray } from "drizzle-orm"
@@ -37,6 +38,10 @@ export async function createGroupChat(input: unknown) {
   const botIds = [...new Set(parsed.data.botIds)]
 
   if (botIds.length < 2 || !(await hasOnlyOwnedBots(userId, botIds))) {
+    Sentry.logger.warn("Group chat rejected, bots not all owned", {
+      userId,
+      botCount: botIds.length,
+    })
     return { error: "Pick at least two of your bots" }
   }
 
@@ -51,6 +56,12 @@ export async function createGroupChat(input: unknown) {
       .values(botIds.map((botId) => ({ chatId: row.id, botId })))
 
     return row
+  })
+
+  Sentry.logger.info("Group chat created", {
+    chatId: groupChat.id,
+    userId,
+    botCount: botIds.length,
   })
 
   // The sidebar lists chats, so refresh the layout that renders it
@@ -99,8 +110,18 @@ export async function updateGroupChat(chatId: string, input: unknown) {
   })
 
   if (!updated) {
+    Sentry.logger.warn("Group chat update skipped, chat not found", {
+      chatId,
+      userId,
+    })
     return { error: "Group chat not found" }
   }
+
+  Sentry.logger.info("Group chat updated", {
+    chatId,
+    userId,
+    botCount: botIds.length,
+  })
 
   // The sidebar and the chat header both show the name and members, so refresh the layout
   revalidatePath("/", "layout")
@@ -124,8 +145,14 @@ export async function deleteGroupChat(chatId: string) {
     .returning({ id: chats.id })
 
   if (!deleted) {
+    Sentry.logger.warn("Group chat delete skipped, chat not found", {
+      chatId,
+      userId,
+    })
     return { error: "Group chat not found" }
   }
+
+  Sentry.logger.info("Group chat deleted", { chatId: deleted.id, userId })
 
   revalidatePath("/", "layout")
 
@@ -137,15 +164,21 @@ async function getOwnedChat(chatId: string) {
   const { userId } = await auth.protect()
 
   const userChat = await getUserChat(userId, chatId)
-  if (!userChat) throw new Error("Chat not found")
+  if (!userChat) {
+    Sentry.logger.warn("Chat access denied, chat not found", { chatId, userId })
+    throw new Error("Chat not found")
+  }
 
   return userChat
 }
 
 // Talking to a bot runs its sandbox, so a free account can't open a bot session
 async function getBotChat(chatId: string) {
-  const { has } = await auth.protect()
-  if (!canUseBots(has)) throw new Error(UPGRADE_MESSAGE)
+  const { userId, has } = await auth.protect()
+  if (!canUseBots(has)) {
+    Sentry.logger.warn("Bot chat blocked by plan", { chatId, userId })
+    throw new Error(UPGRADE_MESSAGE)
+  }
 
   return getOwnedChat(chatId)
 }
@@ -163,6 +196,7 @@ export async function startChatSession(
   params: Parameters<typeof startSession>[0]
 ) {
   await getBotChat(params.chatId)
+  Sentry.logger.info("Chat session started", { chatId: params.chatId })
 
   return startSession(params)
 }

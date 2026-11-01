@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 
 import { canUseSandboxes, UPGRADE_MESSAGE } from "@/lib/billing"
 import { readBytes, readySandbox, SCREENSHOT_PATTERN } from "@/lib/computer-use"
@@ -37,7 +38,10 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error("Screenshot download failed", { path, error })
+    Sentry.logger.error("Screenshot download failed", {
+      path,
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return new Response("Couldn't load the screenshot", { status: 500 })
   }
 }
