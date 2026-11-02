@@ -3,6 +3,9 @@ import { withSentryConfig } from "@sentry/nextjs/config"
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  experimental: {
+    agentUpgrade: "security",
+  },
   // The Daytona SDK loads busboy with a dynamic require, which Next's bundler can't follow
   serverExternalPackages: ["@daytona/sdk"],
 }
